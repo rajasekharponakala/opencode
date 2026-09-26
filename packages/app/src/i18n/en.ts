@@ -664,6 +664,8 @@ export const dict = {
   "home.sessions.group.yesterday": "Yesterday",
   "home.sessions.group.older": "Older",
   "home.providerTip": "Connect to 75+ providers to use other models, including Claude, GPT, Gemini, etc",
+  "home.freeModels.title": "Free to use right now",
+  "home.freeModels.requestsSuffix": "free / 5h",
 
   "session.tab.session": "Session",
   "session.tab.review": "Review",
