@@ -56,6 +56,7 @@ const setup: Setup<typeof definition> = (ctx) => {
     get group() {
       return ctx.t("command.category.server")
     },
+    slash: { name: "pair" },
     run: () => layout.settings("pairing"),
   })
 }
