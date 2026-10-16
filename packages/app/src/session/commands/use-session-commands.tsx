@@ -17,6 +17,7 @@ import type { SessionRevert } from "@/session/revert"
 import { Command } from "@opencode/gui-extensions/sdk"
 import { useExtensionHost } from "@/runtime/extension/host"
 import type { Region } from "@/runtime/extension/panels"
+import { useSettingsDialog } from "@/settings/command"
 
 type SessionCommandSource = {
   identity: SessionModel["identity"]
@@ -59,6 +60,7 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
   const platform = usePlatform()
   const layout = useLayout()
   const host = useExtensionHost()
+  const openExtensionsSettings = useSettingsDialog("extensions")
 
   const openDialog = async <T,>(load: () => Promise<T>, show: (value: T) => void) => {
     const owner = actions.session.ownership.capture()
@@ -270,6 +272,27 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
     )
   }
 
+  const stats = () => {
+    void openDialog(
+      () => import("@/session/commands/stats-dialog"),
+      (x) => dialog.show(() => <x.DialogStats />),
+    )
+  }
+
+  const worktrees = () => {
+    const sessionID = actions.session.identity.params.id
+    const info = actions.session.data.info()
+
+    if (!sessionID || !info) return
+    void openDialog(
+      () => import("@/session/commands/worktrees-dialog"),
+      (x) =>
+        dialog.show(() => (
+          <x.DialogWorktrees sessionID={sessionID} projectID={info.projectID} directory={info.location.directory} />
+        )),
+    )
+  }
+
   const sessionCmds = () => [
     sessionCommand({
       id: "session.new",
@@ -323,6 +346,28 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
       description: language.t("command.session.resume.description"),
       slash: "resume",
       onSelect: resume,
+    }),
+    sessionCommand({
+      id: "session.stats",
+      title: language.t("command.session.stats"),
+      description: language.t("command.session.stats.description"),
+      slash: "stats",
+      onSelect: stats,
+    }),
+    sessionCommand({
+      id: "session.worktrees",
+      title: language.t("command.session.worktrees"),
+      description: language.t("command.session.worktrees.description"),
+      slash: "worktrees",
+      disabled: !actions.session.identity.params.id,
+      onSelect: worktrees,
+    }),
+    sessionCommand({
+      id: "session.plugins",
+      title: language.t("command.session.plugins"),
+      description: language.t("command.session.plugins.description"),
+      slash: "plugins",
+      onSelect: openExtensionsSettings,
     }),
     sessionCommand({
       id: "session.export",
