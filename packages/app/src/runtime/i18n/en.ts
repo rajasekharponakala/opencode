@@ -76,6 +76,8 @@ export const dict = {
   "command.session.compact.description": "Summarize the session to reduce context size",
   "command.session.fork": "Fork from message",
   "command.session.fork.description": "Create a new session from a previous message",
+  "command.session.resume": "Switch session",
+  "command.session.resume.description": "Jump to another session on this server",
   "command.session.export": "Export session",
   "command.session.export.description": "Export the full session transcript as JSON",
   "command.session.import": "Import session",

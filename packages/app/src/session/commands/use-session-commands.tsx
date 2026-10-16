@@ -263,6 +263,13 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
     )
   }
 
+  const resume = () => {
+    void openDialog(
+      () => import("@/session/commands/resume-dialog"),
+      (x) => dialog.show(() => <x.DialogResume />),
+    )
+  }
+
   const sessionCmds = () => [
     sessionCommand({
       id: "session.new",
@@ -309,6 +316,13 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
       slash: "fork",
       disabled: !actions.session.identity.params.id || actions.session.history.visibleUserMessages().length === 0,
       onSelect: fork,
+    }),
+    sessionCommand({
+      id: "session.resume",
+      title: language.t("command.session.resume"),
+      description: language.t("command.session.resume.description"),
+      slash: "resume",
+      onSelect: resume,
     }),
     sessionCommand({
       id: "session.export",
