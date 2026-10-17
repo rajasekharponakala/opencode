@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { extractGithubToken, extractGitlabToken } from "../src/services/git-host-credentials"
+import { extractGithubToken, extractGitlabToken } from "../src/git-host-credentials"
 
 test("extractGithubToken trims gh auth token's single-line output", () => {
   expect(extractGithubToken("ghp_exampletoken123\n")).toBe("ghp_exampletoken123")

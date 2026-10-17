@@ -25,3 +25,23 @@ export const Info = Schema.Struct({
   directory: AbsolutePath,
 }).annotate({ identifier: "RepoClone.Info" })
 export interface Info extends Schema.Schema.Type<typeof Info> {}
+
+export const HostID = Schema.Literals(["github", "gitlab"]).annotate({ identifier: "RepoClone.HostID" })
+export type HostID = Schema.Schema.Type<typeof HostID>
+
+// `available` reflects whether the server process can read a live credential from `gh`/`glab`
+// right now; it never carries the token itself.
+export const Host = Schema.Struct({
+  id: HostID,
+  available: Schema.Boolean,
+}).annotate({ identifier: "RepoClone.Host" })
+export interface Host extends Schema.Schema.Type<typeof Host> {}
+
+export const Repo = Schema.Struct({
+  id: nonEmpty,
+  name: Schema.String,
+  fullName: Schema.String,
+  cloneUrl: Schema.String,
+  defaultBranch: Schema.String,
+}).annotate({ identifier: "RepoClone.Repo" })
+export interface Repo extends Schema.Schema.Type<typeof Repo> {}

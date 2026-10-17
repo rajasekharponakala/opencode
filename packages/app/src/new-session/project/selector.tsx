@@ -9,6 +9,7 @@ import {
   type ComponentProps,
 } from "solid-js"
 import { createStore } from "solid-js/store"
+import type { RepoClone } from "@opencode/schema/repo-clone"
 import { Menu } from "@opencode/ui/menu"
 import { Icon } from "@opencode/ui/icon"
 import {
@@ -31,6 +32,20 @@ export type PromptProject = {
   server?: { key: string; name: string }
 }
 
+export type PromptCloneRepoState = {
+  loading: boolean
+  failed: boolean
+  repos: RepoClone.Repo[]
+}
+
+export type PromptCloneControls = {
+  hosts: RepoClone.HostID[]
+  refreshHosts: () => void
+  repos: (host: RepoClone.HostID) => PromptCloneRepoState | undefined
+  loadRepos: (host: RepoClone.HostID) => void
+  clone: (repo: RepoClone.Repo) => void
+}
+
 export type PromptProjectControls = {
   available: PromptProject[]
   directory: string
@@ -38,11 +53,14 @@ export type PromptProjectControls = {
   server?: string
   select: (worktree: string, server?: string) => void
   add: (title: string, server?: string) => void
+  clone: PromptCloneControls
 }
 
 const actionPrefix = "action:"
 
 const projectPrefix = "project:"
+
+const cloneActionKey = "clone-action"
 
 function projectKey(project: PromptProject) {
   return `${projectPrefix}${encodeURIComponent(project.server?.key ?? "")}:${encodeURIComponent(project.worktree)}`
@@ -89,9 +107,13 @@ export function createPromptProjectController(input: {
       .available.map((project) => project.server)
       .filter((server, index, all) => server && all.findIndex((item) => item?.key === server.key) === index)
 
+  const cloneAvailable = () => input.controls().clone.hosts.length > 0
+
   const keys = () => {
+    const clone = cloneAvailable() ? [cloneActionKey] : []
+
     if (servers().length <= 1) {
-      return [...projects().map(projectKey), actionKey(servers()[0]?.key)]
+      return [...projects().map(projectKey), actionKey(servers()[0]?.key), ...clone]
     }
 
     return [
@@ -101,6 +123,7 @@ export function createPromptProjectController(input: {
           .map(projectKey),
       ),
       actionKey(),
+      ...clone,
     ]
   }
 
@@ -134,6 +157,11 @@ export function createPromptProjectController(input: {
     input.controls().add(language.t("command.project.open"), server)
   }
 
+  const cloneRepo = (repo: RepoClone.Repo) => {
+    setStore({ open: false, search: "", active: "" })
+    input.controls().clone.clone(repo)
+  }
+
   const setSearch = (value: string) => {
     const search = value.trim().toLowerCase()
 
@@ -154,6 +182,7 @@ export function createPromptProjectController(input: {
     servers,
     projectKey,
     actionKey,
+    cloneActionKey: () => cloneActionKey,
     open: () => store.open,
     search: () => store.search,
     active: () => store.active,
@@ -162,12 +191,22 @@ export function createPromptProjectController(input: {
       clear: () => language.t("common.clear"),
       new: () => language.t("session.new.project.new"),
       search: () => language.t("session.new.project.search"),
+      clone: () => language.t("session.new.project.clone"),
+      cloneLoading: () => language.t("session.new.project.clone.loading"),
+      cloneEmpty: () => language.t("session.new.project.clone.empty"),
+      cloneFailed: () => language.t("session.new.project.clone.failed"),
     },
     add,
     select,
+    cloneAvailable,
+    cloneHosts: () => input.controls().clone.hosts,
+    cloneRepos: (host: RepoClone.HostID) => input.controls().clone.repos(host),
+    loadCloneRepos: (host: RepoClone.HostID) => input.controls().clone.loadRepos(host),
+    cloneRepo,
     setOpen(open: boolean) {
       if (open) {
         setStore({ open: true, active: initialActive() })
+        input.controls().clone.refreshHosts()
         setTimeout(() => requestAnimationFrame(() => searchRef?.focus()))
 
         return
@@ -203,6 +242,9 @@ export function createPromptProjectController(input: {
     },
     activeAction() {
       return store.active.startsWith(actionPrefix)
+    },
+    activeClone() {
+      return store.active === cloneActionKey
     },
     setSearchRef(el: HTMLInputElement) {
       searchRef = el
@@ -264,6 +306,12 @@ export function PromptProjectSelector(props: {
     dismiss.afterClose(() => props.controller.add(server))
   }
 
+  const selectCloneRepo = (repo: RepoClone.Repo) => {
+    dismiss.preventTriggerRestore()
+    props.controller.setOpen(false)
+    dismiss.afterClose(() => props.controller.cloneRepo(repo))
+  }
+
   const selectActive = () => {
     const project = props.controller.activeProject()
 
@@ -273,7 +321,10 @@ export function PromptProjectSelector(props: {
       return
     }
 
-    if (props.controller.activeAction() && props.controller.servers().length > 1) {
+    if (
+      (props.controller.activeAction() && props.controller.servers().length > 1) ||
+      props.controller.activeClone()
+    ) {
       const item = activeItem()
       item?.focus()
       item?.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }))
@@ -485,6 +536,9 @@ export function PromptProjectSelector(props: {
                 </Menu.Portal>
               </Menu.Sub>
             </Show>
+            <Show when={props.controller.cloneAvailable()}>
+              <CloneRepositoryAction controller={props.controller} onSelect={selectCloneRepo} />
+            </Show>
           </div>
         </Menu.Content>
       </Menu.Portal>
@@ -619,5 +673,95 @@ function ServerAction(props: { server: { key: string; name: string }; onSelect: 
     <Menu.Item class={projectActionClass} onSelect={() => props.onSelect(props.server.key)}>
       <span class="min-w-0 flex-1 truncate leading-5">{props.server.name}</span>
     </Menu.Item>
+  )
+}
+
+// GitHub/GitLab are product names and stay in English per the i18n rules for established borrowings.
+const cloneHostLabel: Record<RepoClone.HostID, string> = { github: "GitHub", gitlab: "GitLab" }
+
+function CloneRepositoryAction(props: { controller: PromptProjectController; onSelect: (repo: RepoClone.Repo) => void }) {
+  const key = () => props.controller.cloneActionKey()
+  const hosts = () => props.controller.cloneHosts()
+
+  return (
+    <Menu.Sub>
+      <Menu.SubTrigger
+        id={key()}
+        data-option-key={key()}
+        class={projectActionClass}
+        classList={{ "!bg-v2-overlay-simple-overlay-hover": props.controller.active() === key() }}
+        onMouseEnter={() => props.controller.setActive(key())}
+      >
+        <Icon name="branch" size="small" />
+        <span class="min-w-0 flex-1 truncate leading-5">{props.controller.labels.clone()}</span>
+      </Menu.SubTrigger>
+      <Menu.Portal>
+        <Menu.SubContent class="max-h-[224px] min-w-[220px] overflow-y-auto rounded-md border-0 bg-v2-background-bg-layer-01 shadow-[var(--v2-elevation-floating)] focus:outline-none">
+          <Show
+            when={hosts().length > 1}
+            fallback={<CloneRepoList controller={props.controller} host={hosts()[0]!} onSelect={props.onSelect} />}
+          >
+            <For each={hosts()}>
+              {(host) => <CloneHostAction controller={props.controller} host={host} onSelect={props.onSelect} />}
+            </For>
+          </Show>
+        </Menu.SubContent>
+      </Menu.Portal>
+    </Menu.Sub>
+  )
+}
+
+function CloneHostAction(props: {
+  controller: PromptProjectController
+  host: RepoClone.HostID
+  onSelect: (repo: RepoClone.Repo) => void
+}) {
+  return (
+    <Menu.Sub>
+      <Menu.SubTrigger class={projectActionClass}>
+        <span class="min-w-0 flex-1 truncate leading-5">{cloneHostLabel[props.host]}</span>
+      </Menu.SubTrigger>
+      <Menu.Portal>
+        <Menu.SubContent class="max-h-[224px] min-w-[220px] overflow-y-auto rounded-md border-0 bg-v2-background-bg-layer-01 shadow-[var(--v2-elevation-floating)] focus:outline-none">
+          <CloneRepoList controller={props.controller} host={props.host} onSelect={props.onSelect} />
+        </Menu.SubContent>
+      </Menu.Portal>
+    </Menu.Sub>
+  )
+}
+
+function CloneRepoList(props: {
+  controller: PromptProjectController
+  host: RepoClone.HostID
+  onSelect: (repo: RepoClone.Repo) => void
+}) {
+  createEffect(() => props.controller.loadCloneRepos(props.host))
+  const state = () => props.controller.cloneRepos(props.host)
+
+  return (
+    <Show when={!state()?.loading} fallback={<CloneStatusLabel text={props.controller.labels.cloneLoading()} />}>
+      <Show when={!state()?.failed} fallback={<CloneStatusLabel text={props.controller.labels.cloneFailed()} />}>
+        <Show
+          when={(state()?.repos.length ?? 0) > 0}
+          fallback={<CloneStatusLabel text={props.controller.labels.cloneEmpty()} />}
+        >
+          <For each={state()?.repos}>
+            {(repo) => (
+              <Menu.Item class={projectActionClass} onSelect={() => props.onSelect(repo)}>
+                <span class="min-w-0 flex-1 truncate leading-5">{repo.fullName}</span>
+              </Menu.Item>
+            )}
+          </For>
+        </Show>
+      </Show>
+    </Show>
+  )
+}
+
+function CloneStatusLabel(props: { text: string }) {
+  return (
+    <div class="flex h-7 select-none items-center px-3 text-[13px] font-[440] leading-5 tracking-[-0.04px] text-v2-text-text-faint">
+      {props.text}
+    </div>
   )
 }

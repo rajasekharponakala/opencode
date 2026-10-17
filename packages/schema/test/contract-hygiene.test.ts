@@ -10,6 +10,7 @@ import { Model } from "../src/model.js"
 import { Project } from "../src/project.js"
 import { SkillAttachment } from "../src/prompt.js"
 import { Provider } from "../src/provider.js"
+import { RepoClone } from "../src/repo-clone.js"
 import { Pty } from "../src/pty.js"
 import { Session } from "../src/session.js"
 import { SessionMessage } from "../src/session-message.js"
@@ -194,6 +195,8 @@ describe("contract hygiene", () => {
       Project.Time,
       Project.Info,
       Pty.Info,
+      RepoClone.Host,
+      RepoClone.Repo,
       Session.ListAnchor,
       Session.Revert,
       SessionInbox.Delivery,

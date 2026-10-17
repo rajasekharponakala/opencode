@@ -1,4 +1,5 @@
-import { createMemo } from "solid-js"
+import { createMemo, createSignal } from "solid-js"
+import type { RepoClone } from "@opencode/schema/repo-clone"
 import { useDirectoryPicker } from "@/workspaces/selection/picker"
 import { useGlobal, useServerCtx } from "@/runtime/server/runtime"
 import { useServerSDK } from "@/runtime/server/client"
@@ -6,9 +7,14 @@ import { serverName, ServerConnection, useServers } from "@/runtime/server/regis
 import { useWorkspaceLocation } from "@/workspaces/location"
 import { workspaceSelectionDestination } from "@/workspaces/paths"
 import { useTabs } from "@/shell/tabs/tabs"
-import type { PromptProjectControls } from "./selector"
+import { useLanguage } from "@/runtime/i18n/language"
+import { showToast } from "@/shell/notifications/toast"
+import { errorMessage } from "@/shell/layout/helpers"
+import { cloneRepo } from "@/workspaces/clone"
+import type { PromptCloneRepoState, PromptProjectControls } from "./selector"
 
 export function createComposerProjectControls(props: { draftId: string; worktree: () => string }) {
+  const language = useLanguage()
   const servers = useServers()
   const serverSDK = useServerSDK()
   const location = useWorkspaceLocation()
@@ -67,6 +73,51 @@ export function createComposerProjectControls(props: { draftId: string; worktree
     })
   }
 
+  // Hosts are detected live from the project server's `gh`/`glab` CLI credentials each time the
+  // menu opens; nothing here is cached across sessions or persisted.
+  const [hosts, setHosts] = createSignal<RepoClone.Host[]>([])
+  const [repoState, setRepoState] = createSignal<Partial<Record<RepoClone.HostID, PromptCloneRepoState>>>({})
+
+  const refreshCloneHosts = () => {
+    projectServerCtx()
+      .sdk.api.repo.host.list()
+      .then(setHosts)
+      .catch(() => setHosts([]))
+  }
+
+  const loadCloneRepos = (host: RepoClone.HostID) => {
+    if (repoState()[host]) return
+    setRepoState((current) => ({ ...current, [host]: { loading: true, failed: false, repos: [] } }))
+
+    projectServerCtx()
+      .sdk.api.repo.host.repos({ host })
+      .then((repos) => setRepoState((current) => ({ ...current, [host]: { loading: false, failed: false, repos } })))
+      .catch(() => setRepoState((current) => ({ ...current, [host]: { loading: false, failed: true, repos: [] } })))
+  }
+
+  const cloneCatalogRepo = (repo: RepoClone.Repo) => {
+    const connection = projectServer()
+    const ctx = projectServerCtx()
+
+    cloneRepo({ api: ctx.sdk.api, data: ctx.data, remote: repo.cloneUrl, branch: repo.defaultBranch })
+      .then((directory) => {
+        ctx.projects.open(directory)
+        ctx.projects.touch(directory)
+        tabs.updateDraft(props.draftId, {
+          server: ServerConnection.key(connection),
+          directory,
+          worktree: workspaceSelectionDestination(props.worktree(), location().directory),
+          branch: undefined,
+        })
+      })
+      .catch((error) => {
+        showToast({
+          title: language.t("prompt.toast.repoCloneFailed.title"),
+          description: errorMessage(error, language.t("common.requestFailed")),
+        })
+      })
+  }
+
   return createMemo<PromptProjectControls>(() => ({
     available: projects(),
     directory: location().directory,
@@ -74,5 +125,12 @@ export function createComposerProjectControls(props: { draftId: string; worktree
     server: servers.list.length > 1 ? ServerConnection.key(projectServer()) : undefined,
     select: selectProject,
     add: addProject,
+    clone: {
+      hosts: hosts().filter((host) => host.available).map((host) => host.id),
+      refreshHosts: refreshCloneHosts,
+      repos: (host) => repoState()[host],
+      loadRepos: loadCloneRepos,
+      clone: cloneCatalogRepo,
+    },
   }))
 }

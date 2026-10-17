@@ -6,6 +6,14 @@ mock.module("@/runtime/i18n/language", () => ({ useLanguage: () => ({ t: (key: s
 
 const { createPromptProjectController } = await import("./selector")
 
+const noClone: PromptProjectControls["clone"] = {
+  hosts: [],
+  refreshHosts() {},
+  repos: () => undefined,
+  loadRepos() {},
+  clone() {},
+}
+
 describe("new session project selection", () => {
   test("shows the current project's appearance before its worktree inventory loads", () => {
     const generic = { id: "other", worktree: "/other" }
@@ -23,6 +31,7 @@ describe("new session project selection", () => {
       projectID: "current",
       select() {},
       add() {},
+      clone: noClone,
     }
 
     createRoot((dispose) => {
@@ -43,6 +52,7 @@ describe("new session project selection", () => {
       server: "local",
       select() {},
       add() {},
+      clone: noClone,
     }
 
     createRoot((dispose) => {
