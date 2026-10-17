@@ -74,6 +74,7 @@ export class OperationError extends Schema.TaggedError<OperationError>()("Git.Op
     "diff",
     "restore",
     "pack",
+    "set_remote",
   ]),
   message: Schema.String,
   directory: Schema.optional(AbsolutePath),
@@ -110,6 +111,7 @@ export interface Interface {
   }
   readonly remote: {
     readonly get: (repository: Repository, name?: string) => Effect.Effect<string | undefined>
+    readonly setUrl: (repository: Repository, url: string, name?: string) => Effect.Effect<void, OperationError>
   }
   readonly history: {
     readonly head: (repository: Repository) => Effect.Effect<string | undefined>
@@ -290,6 +292,14 @@ const layer = Layer.effect(
         directory: input.directory,
         message: "Cloned repository could not be opened",
       })
+    })
+
+    const setRemoteUrl = Effect.fn("Git.remote.setUrl")(function* (
+      repository: Repository,
+      url: string,
+      name = "origin",
+    ) {
+      yield* operation("set_remote", repository.worktree, ["remote", "set-url", name, url])
     })
 
     const fetch = Effect.fn("Git.sync.fetchRemotes")(function* (
@@ -1272,7 +1282,7 @@ const layer = Layer.effect(
 
     return Service.of({
       repo: { discover, clone, create },
-      remote: { get: remote },
+      remote: { get: remote, setUrl: setRemoteUrl },
       history: { head, branch, defaultRemoteBranch: remoteHead, rootCommits: roots },
       sync: { fetchRemotes: fetch, fetchBranch, checkoutRemoteBranch: checkout, resetHard: reset },
       worktree: { create: worktreeCreate, remove: worktreeRemove, list: worktreeList },
